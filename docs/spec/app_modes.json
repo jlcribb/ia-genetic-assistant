@@ -1,0 +1,33 @@
+{
+  "modes": [
+    {
+      "id": "clinical_genomics",
+      "name": "Clinical Genomics Expert",
+      "description": "Deep analysis of variants, phenotypes, and clinical implications.",
+      "allowed_domains": ["genomics", "clinical_genetics", "phenotyping"],
+      "default_intent": "variant_interpretation",
+      "mcp_requirements": ["omim", "hpo", "pubmed"]
+    },
+    {
+      "id": "research_discovery",
+      "name": "Research & Discovery",
+      "description": "Exploration of pathways, gene functions, and recent literature.",
+      "allowed_domains": ["molecular_biology", "pathways", "literature"],
+      "default_intent": "pathway_analysis",
+      "mcp_requirements": ["pubmed", "uniprot"]
+    },
+    {
+      "id": "educational_advisor",
+      "name": "Educational Advisor",
+      "description": "Simplifying complex genetic concepts for patients or students.",
+      "allowed_domains": ["education", "patient_advocacy"],
+      "default_intent": "concept_explanation",
+      "mcp_requirements": ["medline_plus"]
+    }
+  ],
+  "global_policies": {
+    "require_evidence": true,
+    "max_sections": 5,
+    "forbidden_actions": ["medical_diagnosis", "prescription_advice"]
+  }
+}

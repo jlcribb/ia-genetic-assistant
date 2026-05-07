@@ -1,0 +1,12 @@
+graph TD
+    A[User Query] --> B{resolveActiveMode}
+    B --> C[classifyDomain]
+    C --> D[classifyIntent]
+    D --> E{evaluatePolicy}
+    E -- Rejected --> F[buildElegantRejection]
+    E -- Allowed --> G[resolveAllowedTools]
+    G --> H[Execute MCP Tools]
+    H --> I[verifyEvidence]
+    I --> J[buildStructuredResponse]
+    F --> K[Final Output]
+    J --> K

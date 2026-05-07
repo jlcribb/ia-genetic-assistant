@@ -1,0 +1,115 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: userId (UID)
+    // Fields:
+    //   - uid: string (required)
+    //   - email: string (required, email format)
+    //   - displayName: string (optional)
+    //   - photoURL: string (optional, uri format)
+    //   - role: string (required, 'user' or 'admin')
+    //
+    // Collection: queries
+    // Document ID: queryId (auto-generated)
+    // Fields:
+    //   - uid: string (required)
+    //   - moduleId: string (required)
+    //   - input: map (required)
+    //   - response: string (required)
+    //   - timestamp: timestamp (required)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.uid;
+    }
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'role']) &&
+             data.uid == request.auth.uid &&
+             isValidEmail(data.email) &&
+             data.role in ['user', 'admin'];
+    }
+    function isValidQuery(data) {
+      return data.keys().hasAll(['uid', 'moduleId', 'input', 'response', 'timestamp']) &&
+             data.uid == request.auth.uid &&
+             data.moduleId is string &&
+             data.response is string &&
+             data.timestamp is timestamp;
+    }
+
+    function isValidFeedback(data) {
+      return data.keys().hasAll(['feedback_id', 'user_id', 'session_id', 'response_id', 'active_mode', 'ratings', 'would_use_again', 'has_comment', 'quality_score', 'created_at', 'updated_at', 'app_version', 'response_meta']) &&
+             data.user_id == request.auth.uid &&
+             data.ratings.functionality is int && data.ratings.functionality >= 1 && data.ratings.functionality <= 5 &&
+             data.ratings.technical_accuracy is int && data.ratings.technical_accuracy >= 1 && data.ratings.technical_accuracy <= 5 &&
+             data.ratings.link_relevance is int && data.ratings.link_relevance >= 1 && data.ratings.link_relevance <= 5 &&
+             data.ratings.usability is int && data.ratings.usability >= 1 && data.ratings.usability <= 5 &&
+             data.ratings.overall_satisfaction is int && data.ratings.overall_satisfaction >= 1 && data.ratings.overall_satisfaction <= 5 &&
+             data.quality_score is number && data.quality_score >= 1 && data.quality_score <= 5 &&
+             data.created_at is timestamp &&
+             data.updated_at is timestamp &&
+             data.response_meta.domain_status in ['valid_genetics', 'adjacent_biomed', 'ambiguous', 'out_of_domain'] &&
+             data.response_meta.verification_status in ['verified', 'partial', 'none'];
+    }
+
+    function isRecent(time) {
+      return time > request.time - duration.value(5, 'm') && time < request.time + duration.value(5, 'm');
+    }
+
+    function isAdmin() {
+      // Robust admin check supporting multiple email formats and verifying email
+      return isAuthenticated() && (
+        (request.auth.token.email != null && request.auth.token.email.lower() == "jl.cribb@gmail.com") ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+      );
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == resource.data.role;
+    }
+
+    match /users/{userId}/feedback_summary/{docId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow write: if isOwner(userId) || isAdmin();
+    }
+
+    match /queries/{queryId} {
+      allow read: if isDocOwner() || isAdmin();
+      allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid && isValidQuery(request.resource.data);
+      allow delete: if isDocOwner() || isAdmin();
+    }
+
+    match /feedback/{feedbackId} {
+      allow create: if isAuthenticated() && request.resource.data.user_id == request.auth.uid && isValidFeedback(request.resource.data);
+      allow read: if isOwner(resource.data.user_id) || isAdmin();
+      allow update, delete: if isAdmin();
+    }
+
+    match /analytics/{document=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+  }
+}

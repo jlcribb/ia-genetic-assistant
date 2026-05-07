@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://genetic-assistant.local/schemas/feedback.schema.json",
+  "title": "AssistantResponseFeedback",
+  "type": "object",
+  "required": [
+    "feedback_id",
+    "user_id",
+    "session_id",
+    "response_id",
+    "active_mode",
+    "ratings",
+    "would_use_again",
+    "has_comment",
+    "quality_score",
+    "created_at",
+    "updated_at",
+    "app_version",
+    "response_meta"
+  ],
+  "properties": {
+    "feedback_id": {
+      "type": "string",
+      "description": "Unique identifier for the feedback entry."
+    },
+    "user_id": {
+      "type": "string",
+      "description": "UID of the user who provided the feedback."
+    },
+    "session_id": {
+      "type": "string",
+      "description": "Identifier for the chat session."
+    },
+    "response_id": {
+      "type": "string",
+      "description": "Identifier for the specific response being evaluated."
+    },
+    "active_mode": {
+      "type": "string",
+      "enum": [
+        "genetic_assistant",
+        "genetic_counseling_simulator",
+        "meeting_support",
+        "preliminary_evaluator",
+        "report_interpreter",
+        "report_generator",
+        "genes",
+        "proteins",
+        "signaling_pathways",
+        "genetic_pathologies",
+        "epigenetics",
+        "genetic_glossary"
+      ]
+    },
+    "query_text": {
+      "type": "string",
+      "maxLength": 5000,
+      "description": "The user's original query text."
+    },
+    "ratings": {
+      "type": "object",
+      "required": [
+        "functionality",
+        "technical_accuracy",
+        "link_relevance",
+        "usability",
+        "overall_satisfaction"
+      ],
+      "properties": {
+        "functionality": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "technical_accuracy": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "link_relevance": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "usability": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "overall_satisfaction": { "type": "integer", "minimum": 1, "maximum": 5 }
+      },
+      "additionalProperties": false
+    },
+    "would_use_again": { "type": "boolean" },
+    "written_comment": { "type": "string", "maxLength": 2000 },
+    "has_comment": { "type": "boolean" },
+    "quality_score": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 5,
+      "description": "Weighted average of ratings."
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "app_version": { "type": "string" },
+    "response_meta": {
+      "type": "object",
+      "required": [
+        "domain_status",
+        "intent",
+        "verification_status",
+        "render_as"
+      ],
+      "properties": {
+        "domain_status": {
+          "type": "string",
+          "enum": ["valid_genetics", "adjacent_biomed", "ambiguous", "out_of_domain"]
+        },
+        "intent": { "type": "string" },
+        "verification_status": {
+          "type": "string",
+          "enum": ["verified", "partial", "none"]
+        },
+        "render_as": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

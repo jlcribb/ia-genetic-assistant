@@ -1,0 +1,115 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A user of the application",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string", "format": "uri" },
+        "role": { "type": "string", "enum": ["user", "admin"] }
+      },
+      "required": ["uid", "email"]
+    },
+    "Query": {
+      "title": "Query",
+      "description": "A genetic query made by a user",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "moduleId": { "type": "string" },
+        "input": { "type": "object" },
+        "response": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "moduleId", "input", "response", "timestamp"]
+    },
+    "Feedback": {
+      "title": "Feedback",
+      "description": "User feedback on a specific response",
+      "type": "object",
+      "properties": {
+        "feedback_id": { "type": "string" },
+        "user_id": { "type": "string" },
+        "session_id": { "type": "string" },
+        "response_id": { "type": "string" },
+        "active_mode": { "type": "string" },
+        "query_text": { "type": "string" },
+        "ratings": {
+          "type": "object",
+          "properties": {
+            "functionality": { "type": "number" },
+            "technical_accuracy": { "type": "number" },
+            "link_relevance": { "type": "number" },
+            "usability": { "type": "number" },
+            "overall_satisfaction": { "type": "number" }
+          }
+        },
+        "would_use_again": { "type": "boolean" },
+        "written_comment": { "type": "string" },
+        "has_comment": { "type": "boolean" },
+        "quality_score": { "type": "number" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" },
+        "app_version": { "type": "string" },
+        "response_meta": {
+          "type": "object",
+          "properties": {
+            "domain_status": { "type": "string" },
+            "intent": { "type": "string" },
+            "verification_status": { "type": "string" },
+            "render_as": { "type": "string" }
+          }
+        }
+      },
+      "required": ["feedback_id", "user_id", "session_id", "response_id", "active_mode", "ratings", "would_use_again", "has_comment", "quality_score", "created_at", "updated_at", "app_version", "response_meta"]
+    },
+    "AnalyticsAggregate": {
+      "title": "AnalyticsAggregate",
+      "description": "Aggregated metrics for feedback",
+      "type": "object",
+      "properties": {
+        "feedback_count": { "type": "number" },
+        "sums": { "type": "object" },
+        "averages": { "type": "object" },
+        "would_use_again_count": { "type": "number" },
+        "would_use_again_rate": { "type": "number" },
+        "comment_count": { "type": "number" },
+        "comment_rate": { "type": "number" },
+        "last_updated_at": { "type": "string", "format": "date-time" }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile information"
+    },
+    "/users/{userId}/feedback_summary/current": {
+      "schema": "AnalyticsAggregate",
+      "description": "Aggregated feedback metrics for a specific user"
+    },
+    "/queries/{queryId}": {
+      "schema": "Query",
+      "description": "History of genetic queries"
+    },
+    "/feedback/{feedbackId}": {
+      "schema": "Feedback",
+      "description": "Individual user feedback entries"
+    },
+    "/analytics/global/data/current": {
+      "schema": "AnalyticsAggregate",
+      "description": "Global aggregated feedback metrics"
+    },
+    "/analytics/modes/data/{modeId}": {
+      "schema": "AnalyticsAggregate",
+      "description": "Aggregated feedback metrics per mode"
+    },
+    "/analytics/daily/data/{dateKey}": {
+      "schema": "AnalyticsAggregate",
+      "description": "Daily aggregated feedback metrics"
+    }
+  }
+}
