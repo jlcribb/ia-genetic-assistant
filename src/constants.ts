@@ -87,6 +87,7 @@ export const I18N: Translation = {
     feedback_desc: "¿Cómo calificarías esta respuesta?",
     feedback_submit: "Enviar Feedback",
     feedback_success: "¡Gracias por tu feedback!",
+    feedback_provider_invite: "También puedes realizar un feedback discriminado por proveedor de Agente IA, si lo consideras oportuno.",
     analytics_usage_by_mode_desc: "Este gráfico muestra la distribución de tus consultas entre los diferentes módulos del asistente. Te permite identificar qué herramientas estás utilizando con más frecuencia.",
     metric_functionality_desc: "Evalúa si la IA siguió las instrucciones, estructuró la respuesta correctamente y cumplió con el formato solicitado.",
     metric_accuracy_desc: "Mide la exactitud técnica y científica de la información clínica y genética proporcionada.",
@@ -188,6 +189,7 @@ export const I18N: Translation = {
     feedback_desc: "How would you rate this response?",
     feedback_submit: "Submit Feedback",
     feedback_success: "Thank you for your feedback!",
+    feedback_provider_invite: "You can also provide specific feedback for the AI Agent provider, if you find it appropriate.",
   }
 };
 

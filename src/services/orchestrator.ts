@@ -23,6 +23,8 @@ export class AgentOrchestrator {
     // 1. Domain & Intent Classification + Policy Check
     const classificationPrompt = `
       Act as a Domain Classifier and Policy Engine for a Genetic Assistant.
+      You are part of a multi-step orchestration pipeline. Your goal is to determine if the user query is safe and relevant.
+
       Active Mode: ${module.id}
       Mode Goal: ${module.policy.purpose}
       Allowed Domain Statuses: ${module.policy.allowed_domain_statuses.join(', ')}
@@ -32,20 +34,22 @@ export class AgentOrchestrator {
 
       User Input: "${inputString}"
 
-      Classify the input status into one of these: valid_genetics, adjacent_biomed, ambiguous, out_of_domain.
-      Infer the intention from this list: ${module.policy.allowed_intents.join(', ')}, or unknown.
+      Definitions:
+      - valid_genetics: Clear relation to genes, DNA, inheritance, molecular biology, or genetic pathologies.
+      - adjacent_biomed: Medicine or biology but not strictly genetic (e.g., general anatomy, bacterial infections).
+      - ambiguous: Language is too vague to be sure, OR can refer to both genetics and non-genetics.
+      - out_of_domain: Completely unrelated (sports, politics, etc.).
 
-      Decide if the query is allowed based on the active mode's policy:
-      1. Status must be in Allowed Domain Statuses.
-      2. Intent should ideally be in Allowed Intents.
+      Heuristics:
+      - "gen de cancer" or similar should be 'valid_genetics' (intent: genetic_pathology_query or gene_query), not 'ambiguous', as it clearly targets the genetic basis of cancer.
+      - Short terms like "ADN" or "mutacion" are 'valid_genetics'.
+
+      Decide if the query is allowed:
+      1. Status MUST be in Allowed Domain Statuses (${module.policy.allowed_domain_statuses.join(', ')}).
+      2. If Status is 'ambiguous', you should decide based on the Fallback Behavior instructions: ${module.policy.fallback_behavior.ambiguous}.
       3. Input must NOT touch Forbidden Topics.
-      
-      If not allowed, follow Fallback Behavior:
-      - out_of_domain: ${module.policy.fallback_behavior.out_of_domain}
-      - adjacent_biomed: ${module.policy.fallback_behavior.adjacent_biomed}
-      - ambiguous: ${module.policy.fallback_behavior.ambiguous}
 
-      Return ONLY a JSON object matching this structure:
+      Return ONLY a JSON object matching this MANDATORY structure:
       {
         "domain_classification": { "status": "valid_genetics" | "adjacent_biomed" | "ambiguous" | "out_of_domain", "confidence": 0.95, "reason": "..." },
         "intent_classification": { "intent": "...", "confidence": 0.9 },
@@ -61,11 +65,18 @@ export class AgentOrchestrator {
       return this.buildErrorResponse(module, error.message, lang);
     }
 
-    const classification = parseAIResponse(classificationText, {
+    const rawClassification = parseAIResponse(classificationText, {
       domain_classification: { status: 'ambiguous', confidence: 0, reason: 'Parsing failure' },
       intent_classification: { intent: 'unknown', confidence: 0 },
       policy_decision: { allowed: false, reason: 'Error parsing AI classification', fallback_action: 'reject' }
     } as any);
+
+    // Normalization logic for different model outputs (handles OpenRouter/other variances)
+    const classification = {
+      domain_classification: rawClassification.domain_classification || rawClassification.domain || { status: 'ambiguous', confidence: 0, reason: 'Key normalization fallback' },
+      intent_classification: rawClassification.intent_classification || rawClassification.intent || { intent: 'unknown', confidence: 0 },
+      policy_decision: rawClassification.policy_decision || rawClassification.policy || { allowed: false, reason: 'Key normalization fallback', fallback_action: 'reject' }
+    };
 
     // 2. Tool Resolution (Simulated MCP layer)
     const toolPlan = {
@@ -127,7 +138,7 @@ export class AgentOrchestrator {
       return this.buildErrorResponse(module, error.message, lang, classification);
     }
 
-    const responseData = parseAIResponse(responseText, {
+    const rawResponse = parseAIResponse(responseText, {
       response_payload: {
         summary: lang === 'es' ? 'Error al generar la respuesta estructurada.' : 'Error generating structured response.',
         structured_sections: [],
@@ -141,6 +152,18 @@ export class AgentOrchestrator {
         render_as: 'rejection_card'
       }
     } as any);
+
+    // Normalize response data
+    const responseData = {
+      response_payload: rawResponse.response_payload || rawResponse.payload || rawResponse.response || {
+        summary: lang === 'es' ? 'Formato de respuesta inesperado.' : 'Unexpected response format.',
+        structured_sections: [],
+        warnings: [],
+        next_steps: []
+      },
+      evidence: rawResponse.evidence || { used: false, sources: [], verification_status: 'none' },
+      ui_flags: rawResponse.ui_flags || { show_references: false, show_warning_banner: true, render_as: module.policy.output_format }
+    };
 
     return {
       active_mode: module.id,
@@ -159,20 +182,30 @@ export class AgentOrchestrator {
   ): StructuredResponse {
     const isEs = lang === 'es';
     const summary = isEs 
-      ? `Lo siento, no puedo procesar esta consulta en el modo "${module.id}".`
-      : `I'm sorry, I cannot process this query in "${module.id}" mode.`;
+      ? `Consulta no procesada en el modo "${module.id}".`
+      : `Query not processed in "${module.id}" mode.`;
     
-    const reason = classification.policy_decision?.reason || "Policy violation.";
-    const fallback = classification.policy_decision?.fallback_action || "Try another query.";
+    const reason = classification.policy_decision?.reason || (isEs ? "Violación de política o ambigüedad detectada." : "Policy violation or ambiguity detected.");
+    const fallbackAction = classification.policy_decision?.fallback_action || "ask_reformulation";
+
+    let suggestion = isEs 
+      ? "Por favor, intente reformular su consulta para ser más específico."
+      : "Please try reformulating your query to be more specific.";
+
+    if (fallbackAction === 'redirect') {
+      suggestion = isEs ? "Considere usar otro modo en el menú lateral." : "Consider using another mode in the sidebar.";
+    } else if (fallbackAction === 'reject') {
+      suggestion = isEs ? "Esta consulta está fuera del alcance de este asistente." : "This query is out of the scope of this assistant.";
+    }
 
     const sections: StructuredSection[] = [
       {
-        title: isEs ? "Restricción de Política" : "Policy Restriction",
+        title: isEs ? "Análisis de Política" : "Policy Analysis",
         content: reason
       },
       {
-        title: isEs ? "Sugerencia" : "Suggestion",
-        content: fallback
+        title: isEs ? "Acción Recomendada" : "Recommended Action",
+        content: suggestion
       }
     ];
 
@@ -186,7 +219,7 @@ export class AgentOrchestrator {
         summary,
         structured_sections: sections,
         warnings: [isEs ? "Consulta fuera de dominio o modo activo." : "Query out of domain or active mode."],
-        next_steps: [isEs ? "Intente reformular su pregunta o cambie de modo en el menú lateral." : "Try reformulating your question or switch modes in the sidebar."]
+        next_steps: [isEs ? "Reformula tu pregunta o selecciona un modo más adecuado." : "Reformulate your question or select a more appropriate mode."]
       },
       evidence: { used: false, sources: [], verification_status: 'none' },
       ui_flags: {

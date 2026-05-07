@@ -1105,7 +1105,7 @@ function AppContent() {
 
                         {/* Feedback Trigger */}
                         {lastResponseId && (
-                          <div className="mt-8 pt-6 border-t border-border flex justify-center">
+                          <div className="mt-8 pt-6 border-t border-border flex flex-col items-center gap-3">
                             <button 
                               onClick={handleFeedbackClick}
                               className="flex items-center gap-2 text-sm font-bold text-accent hover:bg-accent/10 px-4 py-2 rounded-xl transition-all"
@@ -1113,6 +1113,9 @@ function AppContent() {
                               <Star className={cn("w-4 h-4", feedbackSubmitted && "fill-accent")} />
                               {feedbackSubmitted ? I18N[lang].feedback_success : I18N[lang].feedback_button}
                             </button>
+                            <p className="text-[10px] text-secondary/70 italic text-center max-w-md">
+                              {I18N[lang].feedback_provider_invite}
+                            </p>
                           </div>
                         )}
                       </div>
