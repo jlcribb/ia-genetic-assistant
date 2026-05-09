@@ -2,6 +2,14 @@ export type Language = 'es' | 'en';
 
 export type Provider = 'gemini' | 'groq' | 'openrouter';
 
+export type ContextMode = 'none' | 'manual' | 'session' | 'history';
+
+export interface ContextConfig {
+  mode: ContextMode;
+  manualText?: string;
+  maxHistoryMessages?: number;
+}
+
 export type Theme = 'light' | 'pastel' | 'muted' | 'corporate' | 'dark' | 'academic' | 'serene' | 'fresh';
 
 export type DomainCategory = 'valid_genetics' | 'adjacent_biomed' | 'ambiguous' | 'out_of_domain';

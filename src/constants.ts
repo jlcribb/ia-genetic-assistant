@@ -95,6 +95,15 @@ export const I18N: Translation = {
     metric_usability_desc: "Evalúa la claridad del lenguaje y qué tan fácil es de entender para el profesional o el paciente.",
     metric_satisfaction_desc: "Representa la experiencia general y la utilidad percibida de la respuesta entregada.",
     metric_explanation_title: "Explicación de Métricas",
+    context_settings_title: "Configuración de Contexto",
+    context_mode_label: "Modo de Contexto:",
+    context_mode_none: "Sin Contexto",
+    context_mode_manual: "Manual (Experto)",
+    context_mode_session: "Sesión Actual",
+    context_mode_history: "Historial Completo",
+    context_manual_placeholder: "Ingrese el contexto específico para esta consulta (ej: El paciente tiene antecedentes de...)",
+    context_aggregation_info: "El sistema incluirá automáticamente consultas anteriores para mejorar la precisión y continuidad.",
+    context_info_title: "Sobre el Contexto Interactivo",
   },
   en: {
     langLabel: "Language:",
@@ -190,6 +199,15 @@ export const I18N: Translation = {
     feedback_submit: "Submit Feedback",
     feedback_success: "Thank you for your feedback!",
     feedback_provider_invite: "You can also provide specific feedback for the AI Agent provider, if you find it appropriate.",
+    context_settings_title: "Context Settings",
+    context_mode_label: "Context Mode:",
+    context_mode_none: "No Context",
+    context_mode_manual: "Manual (Expert)",
+    context_mode_session: "Current Session",
+    context_mode_history: "Full History",
+    context_manual_placeholder: "Enter specific context for this query (e.g., The patient has a history of...)",
+    context_aggregation_info: "The system will automatically include previous queries to improve precision and continuity.",
+    context_info_title: "About Interactive Context",
   }
 };
 

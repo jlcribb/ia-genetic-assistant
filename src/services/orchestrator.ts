@@ -15,15 +15,19 @@ export class AgentOrchestrator {
     moduleId: string, 
     input: any, 
     lang: Language,
-    provider: Provider = 'gemini'
+    provider: Provider = 'gemini',
+    context?: string
   ): Promise<StructuredResponse> {
     const module = MODULES[moduleId];
     const inputString = typeof input === 'string' ? input : JSON.stringify(input);
+
+    const contextSection = context ? `\n\nCONTEXT FROM PREVIOUS INTERACTIVE FLOW OR MANUAL SETTINGS:\n${context}` : '';
 
     // 1. Domain & Intent Classification + Policy Check
     const classificationPrompt = `
       Act as a Domain Classifier and Policy Engine for a Genetic Assistant.
       You are part of a multi-step orchestration pipeline. Your goal is to determine if the user query is safe and relevant.
+      ${contextSection}
 
       Active Mode: ${module.id}
       Mode Goal: ${module.policy.purpose}
@@ -94,6 +98,7 @@ export class AgentOrchestrator {
       Language: ${lang === 'es' ? 'Spanish' : 'English'}.
       Policy Depth: ${module.policy.depth}.
       Allowed Tools: ${toolPlan.selected_tools.join(', ')}.
+      ${contextSection}
 
       User Input: "${inputString}"
 

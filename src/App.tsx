@@ -10,7 +10,7 @@ import {
   Info, Trash2
 } from 'lucide-react';
 import { cn, parseAIResponse } from './lib/utils';
-import { Language, Theme, Module, Provider } from './types';
+import { Language, Theme, Module, Provider, ContextMode, ContextConfig } from './types';
 import { I18N, SIDEBAR_STRUCTURE, MODULES } from './constants';
 import { 
   auth, db, googleProvider, signInWithPopup, signOut, onAuthStateChanged, 
@@ -123,6 +123,12 @@ function AppContent() {
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [showMetricExplanation, setShowMetricExplanation] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [contextConfig, setContextConfig] = useState<ContextConfig>({
+    mode: 'none',
+    manualText: '',
+    maxHistoryMessages: 5
+  });
+  const [sessionHistory, setSessionHistory] = useState<any[]>([]);
   const resetTimeout = useRef<NodeJS.Timeout | null>(null);
 
   // Form states
@@ -274,10 +280,38 @@ function AppContent() {
     setFeedbackSubmitted(false);
     setLastResponseId(null);
 
+    // Context aggregation logic
+    let finalContext = "";
+    if (contextConfig.mode === 'manual') {
+      finalContext = contextConfig.manualText || "";
+    } else if (contextConfig.mode === 'session') {
+      const relevantHistory = sessionHistory.slice(-contextConfig.maxHistoryMessages!);
+      finalContext = relevantHistory.map(h => 
+        `User in mode ${h.moduleId}: ${typeof h.input === 'string' ? h.input : JSON.stringify(h.input)}\nAssistant: ${h.summary}`
+      ).join('\n---\n');
+    } else if (contextConfig.mode === 'history') {
+      const relevantHistory = history.slice(0, contextConfig.maxHistoryMessages!);
+      finalContext = relevantHistory.map(h => 
+        `User in mode ${h.moduleId}: ${typeof h.input === 'string' ? h.input : JSON.stringify(h.input)}\nAssistant: ${typeof h.response === 'string' ? JSON.parse(h.response).response_payload?.summary : ''}`
+      ).join('\n---\n');
+    }
+
     try {
-      const result = await orchestrator.processQuery(currentModuleId, input, lang, providerToUse);
+      const result = await orchestrator.processQuery(currentModuleId, input, lang, providerToUse, finalContext);
       setStructuredResponse(result);
       
+      const newEntry = {
+        uid: user?.uid,
+        moduleId: currentModuleId,
+        input,
+        response: JSON.stringify(result),
+        summary: result.response_payload?.summary || "",
+        provider: providerToUse,
+        timestamp: new Date().toISOString()
+      };
+
+      setSessionHistory(prev => [...prev, newEntry]);
+
       if (user) {
         const path = 'queries';
         try {
@@ -397,291 +431,368 @@ function AppContent() {
 
   const renderModuleInput = () => {
     const module = MODULES[currentModuleId];
-    switch (currentModuleId) {
-      case 'evaluador':
-        return (
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-secondary mb-1">{I18N[lang].evaluador_summary_label}</label>
-              <textarea 
-                value={getInputValue(currentModuleId, 'clinicalSummary')}
-                onChange={(e) => handleInputChange(currentModuleId, 'clinicalSummary', e.target.value)}
-                rows={6} 
-                className="w-full p-3 border rounded-md focus:ring-2 themed-input" 
-                placeholder={I18N[lang].evaluador_summary_placeholder}
-              />
+
+    const content = (() => {
+      switch (currentModuleId) {
+        case 'evaluador':
+          return (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-secondary mb-1">{I18N[lang].evaluador_summary_label}</label>
+                <textarea 
+                  value={getInputValue(currentModuleId, 'clinicalSummary')}
+                  onChange={(e) => handleInputChange(currentModuleId, 'clinicalSummary', e.target.value)}
+                  rows={6} 
+                  className="w-full p-3 border rounded-md focus:ring-2 themed-input" 
+                  placeholder={I18N[lang].evaluador_summary_placeholder}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-secondary mb-1">{I18N[lang].evaluador_history_label}</label>
+                <textarea 
+                  value={getInputValue(currentModuleId, 'familyHistory')}
+                  onChange={(e) => handleInputChange(currentModuleId, 'familyHistory', e.target.value)}
+                  rows={4} 
+                  className="w-full p-3 border rounded-md focus:ring-2 themed-input" 
+                  placeholder={I18N[lang].evaluador_history_placeholder}
+                />
+              </div>
             </div>
+          );
+        case 'generador':
+          return (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-secondary mb-1">{I18N[lang].generador_clinical_label}</label>
+                <textarea 
+                  value={getInputValue(currentModuleId, 'clinicalData')}
+                  onChange={(e) => handleInputChange(currentModuleId, 'clinicalData', e.target.value)}
+                  rows={4} 
+                  className="w-full p-3 border rounded-md focus:ring-2 themed-input" 
+                  placeholder={I18N[lang].generador_clinical_placeholder}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-secondary mb-1">{I18N[lang].generador_molecular_label}</label>
+                <textarea 
+                  value={getInputValue(currentModuleId, 'molecularResult')}
+                  onChange={(e) => handleInputChange(currentModuleId, 'molecularResult', e.target.value)}
+                  rows={6} 
+                  className="w-full p-3 border rounded-md focus:ring-2 themed-input" 
+                  placeholder={I18N[lang].generador_molecular_placeholder}
+                />
+              </div>
+            </div>
+          );
+        case 'simulador':
+          return (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-secondary mb-1">{I18N[lang].simulador_scenario_label}</label>
+                <select 
+                  value={getInputValue(currentModuleId, 'scenario')}
+                  onChange={(e) => handleInputChange(currentModuleId, 'scenario', e.target.value)}
+                  className="w-full p-3 border rounded-md themed-input"
+                >
+                  <option value="">{lang === 'es' ? 'Seleccione un escenario' : 'Select a scenario'}</option>
+                  <option value="explicar_resultado_recesivo">{lang === 'es' ? 'Explicar resultado recesivo a padres' : 'Explain recessive result to parents'}</option>
+                  <option value="comunicar_resultado_incierto">{lang === 'es' ? 'Comunicar resultado incierto (VUS)' : 'Communicate uncertain result (VUS)'}</option>
+                  <option value="comunicar_estado_portador">{lang === 'es' ? 'Informar estado de portador' : 'Inform carrier status'}</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-secondary mb-1">{I18N[lang].simulador_message_label}</label>
+                <textarea 
+                  value={getInputValue(currentModuleId, 'userMessage')}
+                  onChange={(e) => handleInputChange(currentModuleId, 'userMessage', e.target.value)}
+                  rows={3} 
+                  className="w-full p-3 border rounded-md focus:ring-2 themed-input" 
+                  placeholder={I18N[lang].simulador_message_placeholder}
+                />
+              </div>
+            </div>
+          );
+        case 'analytics':
+          return (
+            <div className="space-y-6">
+              {analyticsLoading ? (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <Loader2 className="w-10 h-10 text-accent animate-spin mb-4" />
+                  <p className="text-secondary">{lang === 'es' ? 'Cargando analítica...' : 'Loading analytics...'}</p>
+                </div>
+              ) : analyticsData ? (
+                <div className="space-y-8">
+                  {user?.email && user.email.toLowerCase() === 'jl.cribb@gmail.com' && (
+                    <div className="bg-red-50 border-2 border-red-200 p-6 rounded-3xl flex flex-col sm:flex-row justify-between items-center gap-4 mb-2 animate-in fade-in slide-in-from-top duration-500">
+                      <div className="flex items-center gap-4">
+                        <div className="p-3 bg-red-100 rounded-2xl text-red-600 shadow-sm">
+                          <Trash2 className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <p className="text-red-900 font-black text-lg tracking-tight">{lang === 'es' ? 'Zona Administrativa' : 'Admin Zone'}</p>
+                          <p className="text-red-700 text-sm font-medium">{lang === 'es' ? 'Limpieza profunda de datos para el despliegue final.' : 'Deep database cleanup for final deployment.'}</p>
+                        </div>
+                      </div>
+                      <button 
+                        onClick={handleResetClick}
+                        className={cn(
+                          "w-full sm:w-auto px-8 py-3 rounded-2xl text-sm font-black transition-all uppercase tracking-widest shadow-xl active:scale-95 hover:scale-105",
+                          confirmReset 
+                            ? "bg-orange-500 text-white animate-pulse shadow-orange-500/40" 
+                            : "bg-red-600 text-white shadow-red-500/30 hover:bg-red-700"
+                        )}
+                      >
+                        {confirmReset 
+                          ? (lang === 'es' ? '¡CLIC OTRA VEZ PARA BORRAR TODO!' : 'CLICK AGAIN TO DELETE ALL!') 
+                          : (lang === 'es' ? 'Hard Reset Total' : 'Total Hard Reset')}
+                      </button>
+                    </div>
+                  )}
+                  {showMetricExplanation && (
+                    <motion.div 
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      className="bg-accent/5 border border-accent/20 p-6 rounded-3xl"
+                    >
+                      <div className="flex justify-between items-start mb-4">
+                        <h4 className="text-lg font-bold text-accent flex items-center gap-2">
+                          <Sparkles className="w-5 h-5" />
+                          {I18N[lang].metric_explanation_title}
+                        </h4>
+                        <button onClick={() => setShowMetricExplanation(false)} className="text-secondary hover:text-accent">
+                          <X className="w-5 h-5" />
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
+                        <div>
+                          <p className="font-bold text-primary mb-1">{lang === 'es' ? 'Funcionalidad' : 'Functionality'}</p>
+                          <p className="text-secondary leading-relaxed">{I18N[lang].metric_functionality_desc}</p>
+                        </div>
+                        <div>
+                          <p className="font-bold text-primary mb-1">{lang === 'es' ? 'Precisión' : 'Accuracy'}</p>
+                          <p className="text-secondary leading-relaxed">{I18N[lang].metric_accuracy_desc}</p>
+                        </div>
+                        <div>
+                          <p className="font-bold text-primary mb-1">{lang === 'es' ? 'Relevancia' : 'Relevance'}</p>
+                          <p className="text-secondary leading-relaxed">{I18N[lang].metric_relevance_desc}</p>
+                        </div>
+                        <div>
+                          <p className="font-bold text-primary mb-1">{lang === 'es' ? 'Usabilidad' : 'Usability'}</p>
+                          <p className="text-secondary leading-relaxed">{I18N[lang].metric_usability_desc}</p>
+                        </div>
+                        <div className="md:col-span-2">
+                          <p className="font-bold text-primary mb-1">{lang === 'es' ? 'Satisfacción' : 'Satisfaction'}</p>
+                          <p className="text-secondary leading-relaxed">{I18N[lang].metric_satisfaction_desc}</p>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+  
+                  {/* Global KPIs */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {[
+                      { label: lang === 'es' ? 'Total Feedback' : 'Total Feedback', value: analyticsData.global?.feedback_count || 0, icon: MessageSquare },
+                      { label: lang === 'es' ? 'Calidad Media' : 'Avg Quality', value: `${(analyticsData.global?.averages?.quality_score || 0).toFixed(1)}/5.0`, icon: Star },
+                      { label: lang === 'es' ? 'Tasa de Reuso' : 'Reuse Rate', value: `${((analyticsData.global?.would_use_again_rate || 0) * 100).toFixed(0)}%`, icon: ThumbsUp },
+                      { label: lang === 'es' ? 'Tasa Comentarios' : 'Comment Rate', value: `${((analyticsData.global?.comment_rate || 0) * 100).toFixed(0)}%`, icon: FileText }
+                    ].map((kpi, i) => (
+                      <div key={i} className="bg-secondary p-4 rounded-2xl border border-border shadow-sm flex items-center gap-4">
+                        <div className="p-3 bg-accent/10 rounded-xl">
+                          <kpi.icon className="w-5 h-5 text-accent" />
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-bold text-secondary uppercase tracking-wider">{kpi.label}</p>
+                          <p className="text-xl font-bold text-primary">{kpi.value}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+  
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Radar Chart for Dimensions */}
+                    <div className="bg-secondary p-6 rounded-3xl border border-border shadow-sm">
+                      <div className="flex justify-between items-center mb-6">
+                        <h4 className="text-lg font-bold flex items-center gap-2">
+                          <Shapes className="w-5 h-5 text-accent" />
+                          {lang === 'es' ? 'Desempeño por Dimensión' : 'Performance by Dimension'}
+                        </h4>
+                        <button 
+                          onClick={() => setShowMetricExplanation(!showMetricExplanation)}
+                          className={cn(
+                            "p-2 rounded-full transition-colors",
+                            showMetricExplanation ? "bg-accent text-white" : "text-secondary hover:bg-accent/10"
+                          )}
+                          title={I18N[lang].metric_explanation_title}
+                        >
+                          <Info className="w-5 h-5" />
+                        </button>
+                      </div>
+                      <div className="h-64 w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <RadarChart cx="50%" cy="50%" outerRadius="80%" data={[
+                            { subject: lang === 'es' ? 'Funcionalidad' : 'Functionality', A: analyticsData.global?.averages?.functionality || 0, B: analyticsData.user?.averages?.functionality || 0, fullMark: 5 },
+                            { subject: lang === 'es' ? 'Precisión' : 'Accuracy', A: analyticsData.global?.averages?.technical_accuracy || 0, B: analyticsData.user?.averages?.technical_accuracy || 0, fullMark: 5 },
+                            { subject: lang === 'es' ? 'Relevancia' : 'Relevance', A: analyticsData.global?.averages?.link_relevance || 0, B: analyticsData.user?.averages?.link_relevance || 0, fullMark: 5 },
+                            { subject: lang === 'es' ? 'Usabilidad' : 'Usability', A: analyticsData.global?.averages?.usability || 0, B: analyticsData.user?.averages?.usability || 0, fullMark: 5 },
+                            { subject: lang === 'es' ? 'Satisfacción' : 'Satisfaction', A: analyticsData.global?.averages?.overall_satisfaction || 0, B: analyticsData.user?.averages?.overall_satisfaction || 0, fullMark: 5 }
+                          ]}>
+                            <PolarGrid stroke="var(--border-color)" />
+                            <PolarAngleAxis dataKey="subject" tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} />
+                            <PolarRadiusAxis angle={30} domain={[0, 5]} tick={{ fontSize: 10 }} />
+                            <Radar name="Global" dataKey="A" stroke="var(--bg-accent)" fill="var(--bg-accent)" fillOpacity={0.3} />
+                            <Radar name="Personal" dataKey="B" stroke="#10b981" fill="#10b981" fillOpacity={0.3} />
+                            <Tooltip />
+                            <Legend />
+                          </RadarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+  
+                    {/* Mode Breakdown */}
+                    <div className="bg-secondary p-6 rounded-3xl border border-border shadow-sm">
+                      <h4 className="text-lg font-bold mb-2 flex items-center gap-2">
+                        <Waypoints className="w-5 h-5 text-accent" />
+                        {lang === 'es' ? 'Uso por Modo' : 'Usage by Mode'}
+                      </h4>
+                      <p className="text-xs text-secondary mb-6 leading-relaxed">
+                        {I18N[lang].analytics_usage_by_mode_desc}
+                      </p>
+                      <div className="h-64 w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart 
+                            data={Object.keys(MODULES)
+                              .filter(key => key !== 'analytics')
+                              .map(key => ({
+                                name: I18N[lang][MODULES[key].title] || key,
+                                count: analyticsData.user?.mode_breakdown?.[key]?.feedback_count || 0
+                              }))
+                              .sort((a, b) => b.count - a.count)
+                            }
+                            margin={{ top: 10, right: 10, left: -20, bottom: 40 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(0,0,0,0.05)" />
+                            <XAxis 
+                              dataKey="name" 
+                              interval={0} 
+                              tick={(props) => {
+                                const { x, y, payload } = props;
+                                return (
+                                  <g transform={`translate(${x},${y})`}>
+                                    <text x={0} y={0} dy={16} textAnchor="end" fill="var(--text-secondary)" fontSize={9} transform="rotate(-45)">
+                                      {payload.value}
+                                    </text>
+                                  </g>
+                                );
+                              }}
+                            />
+                            <YAxis tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} />
+                            <Tooltip 
+                              contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                              cursor={{ fill: 'rgba(0,0,0,0.02)' }}
+                            />
+                            <Bar dataKey="count" fill="var(--bg-accent)" radius={[4, 4, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-12 text-secondary italic">
+                  {lang === 'es' ? 'No hay datos de analítica disponibles aún.' : 'No analytics data available yet.'}
+                </div>
+              )}
+            </div>
+          );
+        default:
+          return (
             <div>
-              <label className="block text-sm font-medium text-secondary mb-1">{I18N[lang].evaluador_history_label}</label>
+              <label className="block text-sm font-medium text-secondary mb-1">{I18N[lang][module.inputLabel!]}</label>
               <textarea 
-                value={getInputValue(currentModuleId, 'familyHistory')}
-                onChange={(e) => handleInputChange(currentModuleId, 'familyHistory', e.target.value)}
+                value={getInputValue(currentModuleId, 'input')}
+                onChange={(e) => handleInputChange(currentModuleId, 'input', e.target.value)}
                 rows={4} 
                 className="w-full p-3 border rounded-md focus:ring-2 themed-input" 
-                placeholder={I18N[lang].evaluador_history_placeholder}
+                placeholder={I18N[lang][module.placeholder!]}
               />
             </div>
-          </div>
-        );
-      case 'generador':
-        return (
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-secondary mb-1">{I18N[lang].generador_clinical_label}</label>
-              <textarea 
-                value={getInputValue(currentModuleId, 'clinicalData')}
-                onChange={(e) => handleInputChange(currentModuleId, 'clinicalData', e.target.value)}
-                rows={4} 
-                className="w-full p-3 border rounded-md focus:ring-2 themed-input" 
-                placeholder={I18N[lang].generador_clinical_placeholder}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-secondary mb-1">{I18N[lang].generador_molecular_label}</label>
-              <textarea 
-                value={getInputValue(currentModuleId, 'molecularResult')}
-                onChange={(e) => handleInputChange(currentModuleId, 'molecularResult', e.target.value)}
-                rows={6} 
-                className="w-full p-3 border rounded-md focus:ring-2 themed-input" 
-                placeholder={I18N[lang].generador_molecular_placeholder}
-              />
-            </div>
-          </div>
-        );
-      case 'simulador':
-        return (
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-secondary mb-1">{I18N[lang].simulador_scenario_label}</label>
+          );
+      }
+    })();
+
+    return (
+      <div className="space-y-4">
+        {currentModuleId !== 'analytics' && (
+          <div className="mb-6 bg-secondary/30 border border-border p-4 rounded-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-accent/10 rounded-lg">
+                  <History className="w-4 h-4 text-accent" />
+                </div>
+                <h4 className="text-sm font-bold text-primary">{I18N[lang].context_settings_title}</h4>
+              </div>
               <select 
-                value={getInputValue(currentModuleId, 'scenario')}
-                onChange={(e) => handleInputChange(currentModuleId, 'scenario', e.target.value)}
-                className="w-full p-3 border rounded-md themed-input"
+                value={contextConfig.mode}
+                onChange={(e) => setContextConfig({...contextConfig, mode: e.target.value as ContextMode})}
+                className="text-xs bg-primary border-border rounded-lg p-1 px-2 focus:ring-1 focus:ring-accent outline-none"
               >
-                <option value="">{lang === 'es' ? 'Seleccione un escenario' : 'Select a scenario'}</option>
-                <option value="explicar_resultado_recesivo">{lang === 'es' ? 'Explicar resultado recesivo a padres' : 'Explain recessive result to parents'}</option>
-                <option value="comunicar_resultado_incierto">{lang === 'es' ? 'Comunicar resultado incierto (VUS)' : 'Communicate uncertain result (VUS)'}</option>
-                <option value="comunicar_estado_portador">{lang === 'es' ? 'Informar estado de portador' : 'Inform carrier status'}</option>
+                <option value="none">{I18N[lang].context_mode_none}</option>
+                <option value="manual">{I18N[lang].context_mode_manual}</option>
+                <option value="session">{I18N[lang].context_mode_session}</option>
+                <option value="history">{I18N[lang].context_mode_history}</option>
               </select>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-secondary mb-1">{I18N[lang].simulador_message_label}</label>
-              <textarea 
-                value={getInputValue(currentModuleId, 'userMessage')}
-                onChange={(e) => handleInputChange(currentModuleId, 'userMessage', e.target.value)}
-                rows={3} 
-                className="w-full p-3 border rounded-md focus:ring-2 themed-input" 
-                placeholder={I18N[lang].simulador_message_placeholder}
-              />
-            </div>
-          </div>
-        );
-      case 'analytics':
-        return (
-          <div className="space-y-6">
-            {analyticsLoading ? (
-              <div className="flex flex-col items-center justify-center py-12">
-                <Loader2 className="w-10 h-10 text-accent animate-spin mb-4" />
-                <p className="text-secondary">{lang === 'es' ? 'Cargando analítica...' : 'Loading analytics...'}</p>
-              </div>
-            ) : analyticsData ? (
-              <div className="space-y-8">
-                {user?.email && user.email.toLowerCase() === 'jl.cribb@gmail.com' && (
-                  <div className="bg-red-50 border-2 border-red-200 p-6 rounded-3xl flex flex-col sm:flex-row justify-between items-center gap-4 mb-2 animate-in fade-in slide-in-from-top duration-500">
-                    <div className="flex items-center gap-4">
-                      <div className="p-3 bg-red-100 rounded-2xl text-red-600 shadow-sm">
-                        <Trash2 className="w-6 h-6" />
-                      </div>
-                      <div>
-                        <p className="text-red-900 font-black text-lg tracking-tight">{lang === 'es' ? 'Zona Administrativa' : 'Admin Zone'}</p>
-                        <p className="text-red-700 text-sm font-medium">{lang === 'es' ? 'Limpieza profunda de datos para el despliegue final.' : 'Deep database cleanup for final deployment.'}</p>
-                      </div>
-                    </div>
-                    <button 
-                      onClick={handleResetClick}
-                      className={cn(
-                        "w-full sm:w-auto px-8 py-3 rounded-2xl text-sm font-black transition-all uppercase tracking-widest shadow-xl active:scale-95 hover:scale-105",
-                        confirmReset 
-                          ? "bg-orange-500 text-white animate-pulse shadow-orange-500/40" 
-                          : "bg-red-600 text-white shadow-red-500/30 hover:bg-red-700"
-                      )}
-                    >
-                      {confirmReset 
-                        ? (lang === 'es' ? '¡CLIC OTRA VEZ PARA BORRAR TODO!' : 'CLICK AGAIN TO DELETE ALL!') 
-                        : (lang === 'es' ? 'Hard Reset Total' : 'Total Hard Reset')}
-                    </button>
-                  </div>
-                )}
-                {showMetricExplanation && (
-                  <motion.div 
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    className="bg-accent/5 border border-accent/20 p-6 rounded-3xl"
-                  >
-                    <div className="flex justify-between items-start mb-4">
-                      <h4 className="text-lg font-bold text-accent flex items-center gap-2">
-                        <Sparkles className="w-5 h-5" />
-                        {I18N[lang].metric_explanation_title}
-                      </h4>
-                      <button onClick={() => setShowMetricExplanation(false)} className="text-secondary hover:text-accent">
-                        <X className="w-5 h-5" />
-                      </button>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
-                      <div>
-                        <p className="font-bold text-primary mb-1">{lang === 'es' ? 'Funcionalidad' : 'Functionality'}</p>
-                        <p className="text-secondary leading-relaxed">{I18N[lang].metric_functionality_desc}</p>
-                      </div>
-                      <div>
-                        <p className="font-bold text-primary mb-1">{lang === 'es' ? 'Precisión' : 'Accuracy'}</p>
-                        <p className="text-secondary leading-relaxed">{I18N[lang].metric_accuracy_desc}</p>
-                      </div>
-                      <div>
-                        <p className="font-bold text-primary mb-1">{lang === 'es' ? 'Relevancia' : 'Relevance'}</p>
-                        <p className="text-secondary leading-relaxed">{I18N[lang].metric_relevance_desc}</p>
-                      </div>
-                      <div>
-                        <p className="font-bold text-primary mb-1">{lang === 'es' ? 'Usabilidad' : 'Usability'}</p>
-                        <p className="text-secondary leading-relaxed">{I18N[lang].metric_usability_desc}</p>
-                      </div>
-                      <div className="md:col-span-2">
-                        <p className="font-bold text-primary mb-1">{lang === 'es' ? 'Satisfacción' : 'Satisfaction'}</p>
-                        <p className="text-secondary leading-relaxed">{I18N[lang].metric_satisfaction_desc}</p>
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
 
-                {/* Global KPIs */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {[
-                    { label: lang === 'es' ? 'Total Feedback' : 'Total Feedback', value: analyticsData.global?.feedback_count || 0, icon: MessageSquare },
-                    { label: lang === 'es' ? 'Calidad Media' : 'Avg Quality', value: `${(analyticsData.global?.averages?.quality_score || 0).toFixed(1)}/5.0`, icon: Star },
-                    { label: lang === 'es' ? 'Tasa de Reuso' : 'Reuse Rate', value: `${((analyticsData.global?.would_use_again_rate || 0) * 100).toFixed(0)}%`, icon: ThumbsUp },
-                    { label: lang === 'es' ? 'Tasa Comentarios' : 'Comment Rate', value: `${((analyticsData.global?.comment_rate || 0) * 100).toFixed(0)}%`, icon: FileText }
-                  ].map((kpi, i) => (
-                    <div key={i} className="bg-secondary p-4 rounded-2xl border border-border shadow-sm flex items-center gap-4">
-                      <div className="p-3 bg-accent/10 rounded-xl">
-                        <kpi.icon className="w-5 h-5 text-accent" />
-                      </div>
-                      <div>
-                        <p className="text-[10px] font-bold text-secondary uppercase tracking-wider">{kpi.label}</p>
-                        <p className="text-xl font-bold text-primary">{kpi.value}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+            <AnimatePresence mode="wait">
+              {contextConfig.mode === 'manual' && (
+                <motion.div 
+                  key="manual"
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="overflow-hidden"
+                >
+                  <textarea 
+                    value={contextConfig.manualText}
+                    onChange={(e) => setContextConfig({...contextConfig, manualText: e.target.value})}
+                    className="w-full p-3 text-xs border rounded-xl themed-input mb-2"
+                    placeholder={I18N[lang].context_manual_placeholder}
+                    rows={3}
+                  />
+                </motion.div>
+              )}
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* Radar Chart for Dimensions */}
-                  <div className="bg-secondary p-6 rounded-3xl border border-border shadow-sm">
-                    <div className="flex justify-between items-center mb-6">
-                      <h4 className="text-lg font-bold flex items-center gap-2">
-                        <Shapes className="w-5 h-5 text-accent" />
-                        {lang === 'es' ? 'Desempeño por Dimensión' : 'Performance by Dimension'}
-                      </h4>
-                      <button 
-                        onClick={() => setShowMetricExplanation(!showMetricExplanation)}
-                        className={cn(
-                          "p-2 rounded-full transition-colors",
-                          showMetricExplanation ? "bg-accent text-white" : "text-secondary hover:bg-accent/10"
-                        )}
-                        title={I18N[lang].metric_explanation_title}
-                      >
-                        <Info className="w-5 h-5" />
-                      </button>
-                    </div>
-                    <div className="h-64 w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <RadarChart cx="50%" cy="50%" outerRadius="80%" data={[
-                          { subject: lang === 'es' ? 'Funcionalidad' : 'Functionality', A: analyticsData.global?.averages?.functionality || 0, B: analyticsData.user?.averages?.functionality || 0, fullMark: 5 },
-                          { subject: lang === 'es' ? 'Precisión' : 'Accuracy', A: analyticsData.global?.averages?.technical_accuracy || 0, B: analyticsData.user?.averages?.technical_accuracy || 0, fullMark: 5 },
-                          { subject: lang === 'es' ? 'Relevancia' : 'Relevance', A: analyticsData.global?.averages?.link_relevance || 0, B: analyticsData.user?.averages?.link_relevance || 0, fullMark: 5 },
-                          { subject: lang === 'es' ? 'Usabilidad' : 'Usability', A: analyticsData.global?.averages?.usability || 0, B: analyticsData.user?.averages?.usability || 0, fullMark: 5 },
-                          { subject: lang === 'es' ? 'Satisfacción' : 'Satisfaction', A: analyticsData.global?.averages?.overall_satisfaction || 0, B: analyticsData.user?.averages?.overall_satisfaction || 0, fullMark: 5 }
-                        ]}>
-                          <PolarGrid stroke="var(--border-color)" />
-                          <PolarAngleAxis dataKey="subject" tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} />
-                          <PolarRadiusAxis angle={30} domain={[0, 5]} tick={{ fontSize: 10 }} />
-                          <Radar name="Global" dataKey="A" stroke="var(--bg-accent)" fill="var(--bg-accent)" fillOpacity={0.3} />
-                          <Radar name="Personal" dataKey="B" stroke="#10b981" fill="#10b981" fillOpacity={0.3} />
-                          <Tooltip />
-                          <Legend />
-                        </RadarChart>
-                      </ResponsiveContainer>
+              {(contextConfig.mode === 'session' || contextConfig.mode === 'history') && (
+                <motion.div 
+                  key="auto"
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="overflow-hidden"
+                >
+                  <div className="flex items-center gap-2 text-[10px] text-secondary bg-accent/5 p-2 rounded-lg">
+                    <Info className="w-3 h-3 text-accent" />
+                    <p>{I18N[lang].context_aggregation_info}</p>
+                    <div className="ml-auto flex items-center gap-2">
+                      <span>Max:</span>
+                      <input 
+                        type="number" 
+                        value={contextConfig.maxHistoryMessages}
+                        onChange={(e) => setContextConfig({...contextConfig, maxHistoryMessages: parseInt(e.target.value)})}
+                        className="w-10 bg-primary border rounded px-1"
+                        min="1"
+                        max="20"
+                      />
                     </div>
                   </div>
-
-                  {/* Mode Breakdown */}
-                  <div className="bg-secondary p-6 rounded-3xl border border-border shadow-sm">
-                    <h4 className="text-lg font-bold mb-2 flex items-center gap-2">
-                      <Waypoints className="w-5 h-5 text-accent" />
-                      {lang === 'es' ? 'Uso por Modo' : 'Usage by Mode'}
-                    </h4>
-                    <p className="text-xs text-secondary mb-6 leading-relaxed">
-                      {I18N[lang].analytics_usage_by_mode_desc}
-                    </p>
-                    <div className="h-64 w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart 
-                          data={Object.keys(MODULES)
-                            .filter(key => key !== 'analytics')
-                            .map(key => ({
-                              name: I18N[lang][MODULES[key].title] || key,
-                              count: analyticsData.user?.mode_breakdown?.[key]?.feedback_count || 0
-                            }))
-                            .sort((a, b) => b.count - a.count)
-                          }
-                          margin={{ top: 10, right: 10, left: -20, bottom: 40 }}
-                        >
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(0,0,0,0.05)" />
-                          <XAxis 
-                            dataKey="name" 
-                            interval={0} 
-                            tick={(props) => {
-                              const { x, y, payload } = props;
-                              return (
-                                <g transform={`translate(${x},${y})`}>
-                                  <text x={0} y={0} dy={16} textAnchor="end" fill="var(--text-secondary)" fontSize={9} transform="rotate(-45)">
-                                    {payload.value}
-                                  </text>
-                                </g>
-                              );
-                            }}
-                          />
-                          <YAxis tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} />
-                          <Tooltip 
-                            contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                            cursor={{ fill: 'rgba(0,0,0,0.02)' }}
-                          />
-                          <Bar dataKey="count" fill="var(--bg-accent)" radius={[4, 4, 0, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-12 text-secondary italic">
-                {lang === 'es' ? 'No hay datos de analítica disponibles aún.' : 'No analytics data available yet.'}
-              </div>
-            )}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
-        );
-      default:
-        return (
-          <div>
-            <label className="block text-sm font-medium text-secondary mb-1">{I18N[lang][module.inputLabel!]}</label>
-            <textarea 
-              value={getInputValue(currentModuleId, 'input')}
-              onChange={(e) => handleInputChange(currentModuleId, 'input', e.target.value)}
-              rows={4} 
-              className="w-full p-3 border rounded-md focus:ring-2 themed-input" 
-              placeholder={I18N[lang][module.placeholder!]}
-            />
-          </div>
-        );
-    }
+        )}
+        {content}
+      </div>
+    );
   };
 
   return (
