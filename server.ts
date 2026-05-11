@@ -23,28 +23,7 @@ async function startServer() {
     
     try {
       if (provider === 'gemini') {
-        const apiKey = process.env.GEMINI_API_KEY;
-        if (!apiKey || apiKey === "undefined" || apiKey === "null" || apiKey.trim() === "") {
-          console.error("[AI Proxy] GEMINI_API_KEY is missing or invalid in server environment");
-          throw new Error("Missing GEMINI_API_KEY in server environment. Please check Cloud Run secrets.");
-        }
-
-        console.log(`[AI Proxy] Calling Gemini API (Key length: ${apiKey.length})...`);
-        const genAI = new GoogleGenAI({ apiKey });
-        
-        // Using a standard, supported model
-        const response = await genAI.models.generateContent({
-          model: "gemini-1.5-flash",
-          contents: prompt,
-        });
-
-        if (!response || !response.text) {
-          console.error("[AI Proxy] No text returned from Gemini");
-          throw new Error("No text returned from Gemini");
-        }
-
-        console.log("[AI Proxy] Gemini response success");
-        return res.json({ text: response.text });
+        return res.status(400).json({ error: "Gemini must be called from the frontend" });
       }
 
       if (provider === 'groq') {
