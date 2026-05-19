@@ -27,27 +27,50 @@ export const generateResponse = async (prompt: string, provider: Provider = 'gem
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      let errorData;
+      try {
+        errorData = await response.json();
+      } catch (e) {
+        errorData = { error: `HTTP error! status: ${response.status}` };
+      }
+      throw new Error(JSON.stringify(errorData));
     }
 
     const data = await response.json();
     return data.text || "No response from AI.";
   } catch (error: any) {
-    const errorMsg = error.message;
+    const errorStr = error.message;
 
     // Automatic fallback logic
     if (!isFallback) {
-      // If native Gemini fails on server, try OpenRouter (which also has gemini-2.0-flash configured)
-      if (provider === 'gemini') {
-        console.warn(`Native Gemini failed. Falling back to OpenRouter...`);
-        return await generateResponse(prompt, 'openrouter', true);
+      const errorJson = errorStr.toLowerCase();
+      console.warn(`AI request failed: ${errorStr}. Attempting fallback...`);
+      
+      // If native Gemini or any provider fails with specific timeout/load errors
+      const isRetryable = errorJson.includes('504') || 
+                          errorJson.includes('503') || 
+                          errorJson.includes('429') || 
+                          errorJson.includes('aborted') || 
+                          errorJson.includes('timeout') ||
+                          errorJson.includes('deadline');
+
+      if (isRetryable) {
+        // Switch provider for fallback
+        const nextProvider = provider === 'gemini' ? 'openrouter' : 'gemini';
+        console.log(`Switching provider to ${nextProvider} as fallback...`);
+        return await generateResponse(prompt, nextProvider, true);
       }
       
-      // If Groq or OpenRouter fail, try the other or native Gemini
-      if (provider !== 'gemini' && (errorMsg.includes('429') || errorMsg.includes('503') || errorMsg.includes('504') || errorMsg.includes('Key'))) {
-        console.warn(`Provider ${provider} failed. Falling back to Gemini...`);
-        return await generateResponse(prompt, 'gemini', true);
+      // Handle the case where the error is a JSON string from our API
+      try {
+        const parsed = JSON.parse(errorStr);
+        const nestedError = parsed.error?.toLowerCase() || '';
+        if (nestedError.includes('504') || nestedError.includes('timeout') || nestedError.includes('aborted')) {
+          const nextProvider = provider === 'gemini' ? 'openrouter' : 'gemini';
+          return await generateResponse(prompt, nextProvider, true);
+        }
+      } catch (e) {
+        // Not JSON, continue
       }
     }
 

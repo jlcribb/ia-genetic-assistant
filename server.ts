@@ -10,6 +10,42 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+async function fetchWithRetry(url: string, options: any, maxRetries = 2, delay = 1000) {
+  let lastError;
+  for (let i = 0; i < maxRetries + 1; i++) {
+    try {
+      const response = await fetch(url, options);
+      
+      // If success, just return
+      if (response.ok) return response;
+      
+      // For specific retryable errors
+      if (response.status === 504 || response.status === 503 || response.status === 429) {
+        const errorText = await response.clone().text();
+        console.warn(`[AI Proxy] Attempt ${i + 1} failed with status ${response.status}. Error: ${errorText}`);
+        
+        if (i < maxRetries) {
+          const waitTime = response.status === 429 ? delay * 3 : delay; // Wait longer for 429
+          console.warn(`[AI Proxy] Retrying in ${waitTime}ms...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          delay *= 2; // Exponential backoff
+          continue;
+        }
+      }
+      
+      return response; // Return even if it's an error (like 400 or 401) so caller can handle it
+    } catch (error) {
+      lastError = error;
+      if (i < maxRetries) {
+        console.warn(`[AI Proxy] Network error on attempt ${i + 1}. Retrying...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        delay *= 2;
+      }
+    }
+  }
+  throw lastError;
+}
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -34,7 +70,7 @@ async function startServer() {
         }
         
         console.log("[AI Proxy] Calling Groq API...");
-        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        const response = await fetchWithRetry("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
           headers: {
             "Authorization": `Bearer ${apiKey}`,
@@ -49,7 +85,7 @@ async function startServer() {
         if (!response.ok) {
           const errorText = await response.text();
           console.error(`[AI Proxy] Groq error: ${response.status} - ${errorText}`);
-          throw new Error(`Groq API error: ${response.status}`);
+          throw new Error(`Groq API error: ${response.status} - ${errorText}`);
         }
 
         const data = await response.json();
@@ -64,29 +100,48 @@ async function startServer() {
           throw new Error("Missing OpenRouter API Key");
         }
 
-        console.log("[AI Proxy] Calling OpenRouter API...");
-        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-            "X-Title": "Genetic Assistant"
-          },
-          body: JSON.stringify({
-            model: "google/gemini-2.0-flash-001",
-            messages: [{ role: "user", content: prompt }]
-          })
-        });
+        const models = [
+          "google/gemini-2.0-flash-001",
+          "google/gemini-pro-1.5",
+          "anthropic/claude-3-haiku-20240307",
+          "meta-llama/llama-3.1-8b-instruct"
+        ];
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error(`[AI Proxy] OpenRouter error: ${response.status} - ${errorText}`);
-          throw new Error(`OpenRouter API error: ${response.status}`);
+        let lastModelError;
+        for (const model of models) {
+          try {
+            console.log(`[AI Proxy] Calling OpenRouter API with model: ${model}...`);
+            const response = await fetchWithRetry("https://openrouter.ai/api/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${apiKey}`,
+                "Content-Type": "application/json",
+                "X-Title": "GeneTrust AI"
+              },
+              body: JSON.stringify({
+                model,
+                messages: [{ role: "user", content: prompt }],
+                timeout: 30000 // 30s timeout per attempt
+              })
+            });
+
+            if (!response.ok) {
+              const errorText = await response.text();
+              console.error(`[AI Proxy] OpenRouter error for ${model}: ${response.status} - ${errorText}`);
+              lastModelError = new Error(`OpenRouter API error (${model}): ${response.status} - ${errorText}`);
+              continue; // Try next model
+            }
+
+            const data = await response.json();
+            console.log(`[AI Proxy] OpenRouter response success with ${model}`);
+            return res.json({ text: data.choices?.[0]?.message?.content || "" });
+          } catch (err: any) {
+            console.warn(`[AI Proxy] Model ${model} failed: ${err.message}. Trying next...`);
+            lastModelError = err;
+          }
         }
-
-        const data = await response.json();
-        console.log("[AI Proxy] OpenRouter response success");
-        return res.json({ text: data.choices?.[0]?.message?.content || "" });
+        
+        throw lastModelError || new Error("All models failed on OpenRouter");
       }
 
       console.warn(`[AI Proxy] Unsupported provider: ${provider}`);

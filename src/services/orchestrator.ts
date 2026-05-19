@@ -4,9 +4,10 @@ import {
   Module, 
   DomainCategory,
   StructuredSection,
-  Provider
+  Provider,
+  CognitiveLevel
 } from "../types";
-import { MODULES } from "../constants";
+import { MODULES, GLOBAL_COGNITIVE_ARCHITECTURE } from "../constants";
 import { parseAIResponse } from "../lib/utils";
 import { generateResponse } from "./ai";
 
@@ -16,7 +17,8 @@ export class AgentOrchestrator {
     input: any, 
     lang: Language,
     provider: Provider = 'gemini',
-    context?: string
+    context?: string,
+    cognitiveLevel: CognitiveLevel = 'intermediate'
   ): Promise<StructuredResponse> {
     const module = MODULES[moduleId];
     const inputString = typeof input === 'string' ? input : JSON.stringify(input);
@@ -25,12 +27,15 @@ export class AgentOrchestrator {
 
     // 1. Domain & Intent Classification + Policy Check
     const classificationPrompt = `
-      Act as a Domain Classifier and Policy Engine for a Genetic Assistant.
+      ${GLOBAL_COGNITIVE_ARCHITECTURE}
+
+      Act as a Domain Classifier and Policy Engine for GeneTrust AI.
       You are part of a multi-step orchestration pipeline. Your goal is to determine if the user query is safe and relevant.
       ${contextSection}
 
       Active Mode: ${module.id}
       Mode Goal: ${module.policy.purpose}
+      Selected Cognitive Level: ${cognitiveLevel}
       Allowed Domain Statuses: ${module.policy.allowed_domain_statuses.join(', ')}
       Allowed Intents: ${module.policy.allowed_intents.join(', ')}
       Forbidden Topics: ${module.policy.prohibited_topics.join(', ')}
@@ -94,8 +99,12 @@ export class AgentOrchestrator {
     }
 
     const responsePrompt = `
-      Act as an Expert Genetic Assistant in mode: ${module.id}.
+      ${GLOBAL_COGNITIVE_ARCHITECTURE}
+
+      ${module.policy.systemPrompt ? `SYSTEM INSTRUCTIONS FOR THIS MODULE:\n${module.policy.systemPrompt}\n\n` : ''}
+      Act as an Expert GeneTrust AI in mode: ${module.id}.
       Language: ${lang === 'es' ? 'Spanish' : 'English'}.
+      Global Selected Cognitive Level: ${cognitiveLevel}.
       Policy Depth: ${module.policy.depth}.
       Allowed Tools: ${toolPlan.selected_tools.join(', ')}.
       ${contextSection}
@@ -126,6 +135,19 @@ export class AgentOrchestrator {
             }
           ],
           "verification_status": "verified" | "partial" | "none"
+        },
+        "knowledge_graph": {
+          "nodes": [
+            { "id": "...", "label": "...", "type": "gene" | "protein" | "pathway" | "disease" | "variant" | "drug" | "phenotype" | "process", "importance": 1-5 }
+          ],
+          "edges": [
+            { "id": "...", "source": "...", "target": "...", "label": "...", "relationType": "regulates" | "associates" | "causes" | "interacts" | "part_of" | "indicated_for", "strength": 0-1 }
+          ]
+        },
+        "reasoning_trace": {
+          "steps": [
+            { "name": "...", "status": "success" | "failure", "description": "...", "tool_used": "..." }
+          ]
         },
         "ui_flags": {
           "show_references": boolean,
@@ -167,6 +189,8 @@ export class AgentOrchestrator {
         next_steps: []
       },
       evidence: rawResponse.evidence || { used: false, sources: [], verification_status: 'none' },
+      knowledge_graph: rawResponse.knowledge_graph || rawResponse.graph || { nodes: [], edges: [] },
+      reasoning_trace: rawResponse.reasoning_trace || rawResponse.trace || { steps: [] },
       ui_flags: rawResponse.ui_flags || { show_references: false, show_warning_banner: true, render_as: module.policy.output_format }
     };
 

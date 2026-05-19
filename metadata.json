@@ -1,5 +1,6 @@
 {
-  "name": "Asistente Genético AI",
-  "description": "Asistente virtual experto en genética con herramientas de evaluación, análisis y consulta biomolecular.",
-  "requestFramePermissions": []
+  "name": "GeneTrust AI",
+  "description": "Asistente genómico inteligente con evidencia científica, trazabilidad y gobernanza biomédica",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

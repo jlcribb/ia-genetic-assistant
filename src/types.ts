@@ -60,6 +60,38 @@ export interface Evidence {
   verification_status: 'verified' | 'partial' | 'none';
 }
 
+export interface GraphNode {
+  id: string;
+  label: string;
+  type: 'gene' | 'protein' | 'pathway' | 'disease' | 'variant' | 'drug' | 'phenotype' | 'process' | 'mcp_tool' | 'evidence_source' | 'reasoning_step';
+  importance: number; // 1 to 5
+}
+
+export interface GraphEdge {
+  id: string;
+  source: string;
+  target: string;
+  label: string;
+  relationType: 'regulates' | 'associates' | 'causes' | 'interacts' | 'part_of' | 'indicated_for' | 'evidence_back' | 'reasoning_link';
+  strength: number; // 0 to 1
+}
+
+export interface KnowledgeGraphData {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}
+
+export interface ReasoningStep {
+  name: string;
+  status: 'success' | 'failure' | 'skipped';
+  description: string;
+  tool_used?: string;
+}
+
+export interface ReasoningTrace {
+  steps: ReasoningStep[];
+}
+
 export interface StructuredResponse {
   active_mode: string;
   domain_classification: DomainClassification;
@@ -68,6 +100,8 @@ export interface StructuredResponse {
   tool_plan: ToolPlan;
   response_payload: ResponsePayload;
   evidence: Evidence;
+  knowledge_graph?: KnowledgeGraphData;
+  reasoning_trace?: ReasoningTrace;
   ui_flags: {
     show_references: boolean;
     show_warning_banner: boolean;
@@ -84,10 +118,15 @@ export interface StructuredResponse {
       | 'pathology_card'
       | 'epigenetics_card'
       | 'glossary_entry'
+      | 'educational_card'
+      | 'reference_context_card'
+      | 'database_guide_card'
       | 'rejection_card'
       | 'clarification_card';
   };
 }
+
+export type CognitiveLevel = 'basic' | 'intermediate' | 'expert';
 
 export interface ModulePolicy {
   purpose: string;
@@ -104,7 +143,8 @@ export interface ModulePolicy {
     ambiguous: string;
   };
   rejection_type: 'strict' | 'educational' | 'redirection';
-  depth: 'basic' | 'intermediate' | 'expert';
+  depth: CognitiveLevel;
+  systemPrompt?: string;
 }
 
 export interface Module {
