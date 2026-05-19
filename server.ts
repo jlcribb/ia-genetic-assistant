@@ -59,7 +59,31 @@ async function startServer() {
     
     try {
       if (provider === 'gemini') {
-        return res.status(400).json({ error: "Gemini must be called from the frontend" });
+        const apiKey = process.env.GEMINI_API_KEY;
+        if (!apiKey) {
+          console.error("[AI Proxy] Missing Gemini API Key");
+          throw new Error("Missing Gemini API Key");
+        }
+
+        console.log(`[AI Proxy] Calling Gemini API (model: gemini-3-flash-preview)...`);
+        const ai = new GoogleGenAI({ 
+          apiKey,
+          httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
+        });
+        
+        try {
+          const response = await ai.models.generateContent({
+            model: "gemini-3-flash-preview",
+            contents: prompt,
+          });
+          
+          const text = response.text;
+          console.log("[AI Proxy] Gemini response success");
+          return res.json({ text });
+        } catch (err: any) {
+          console.error("[AI Proxy] Gemini error:", err);
+          throw new Error(`Gemini error: ${err.message}`);
+        }
       }
 
       if (provider === 'groq') {

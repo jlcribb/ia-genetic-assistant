@@ -1,23 +1,7 @@
-import { GoogleGenAI } from "@google/genai";
 import { Provider } from "../types";
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
 
 export const generateResponse = async (prompt: string, provider: Provider = 'gemini', isFallback: boolean = false): Promise<string> => {
   try {
-    if (provider === 'gemini') {
-      console.log(`[Frontend AI] Calling Gemini directly...`);
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-      });
-      
-      if (!response || !response.text) {
-        throw new Error("No text returned from Gemini");
-      }
-      return response.text;
-    }
-
     const response = await fetch("/api/ai", {
       method: "POST",
       headers: {
