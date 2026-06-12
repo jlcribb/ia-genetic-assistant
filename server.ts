@@ -65,7 +65,7 @@ async function startServer() {
           throw new Error("Missing Gemini API Key");
         }
 
-        console.log(`[AI Proxy] Calling Gemini API (model: gemini-3-flash-preview)...`);
+        console.log(`[AI Proxy] Calling Gemini API (model: gemini-3.5-flash)...`);
         const ai = new GoogleGenAI({ 
           apiKey,
           httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
@@ -73,7 +73,7 @@ async function startServer() {
         
         try {
           const response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
+            model: "gemini-3.5-flash",
             contents: prompt,
           });
           

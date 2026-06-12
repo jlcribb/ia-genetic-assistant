@@ -1171,7 +1171,7 @@ function AppContent() {
                             <div className="flex justify-between items-center p-3 bg-primary/5 rounded-xl border border-border">
                               <span className="text-xs font-bold text-secondary uppercase">{lang === 'es' ? 'Modelo' : 'Model'}</span>
                               <span className="text-sm font-black text-primary">
-                                {activeProvider === 'gemini' ? 'gemini-3-flash-preview' : activeProvider === 'groq' ? 'llama-3.3-70b-versatile' : 'google/gemini-2.0-flash-001'}
+                                {activeProvider === 'gemini' ? 'gemini-3.5-flash' : activeProvider === 'groq' ? 'llama-3.3-70b-versatile' : 'google/gemini-2.0-flash-001'}
                               </span>
                             </div>
                             <div className="flex justify-between items-center p-3 bg-primary/5 rounded-xl border border-border">
